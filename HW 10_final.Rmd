@@ -1,0 +1,135 @@
+---
+title: "HW 10: Tattoo Sweat"
+author: "Paul Harmon, Steve Durtka, Michaela Powell and Robert Lester"
+output: pdf_document
+---
+
+
+
+## Tattoo sweat
+
+- __The simplest mixed model is the paired t-test where two measurement are taken on each subject. Read Luetkemeier et al. (2017) for an example of this. I used the "digitize" package to extract their responses from the figures so our analysis won't match exactly but should be close.__
+
+1) __In the responses they analyze related to Figure 1 and 2, what was measured and how were the measurements paired in their analyses?__
+Two measurements were made on each respondent; one was made to the tattooed area of their body, and the other to the non-tattooed area of the body. The non-tattooed area was paired with the tattooed area on each respondent. 
+
+In figure 1, the mean Sweat Rate (mg per square cm per minute) was measured from weight of the sweat collection disk before and after inducing sweat.  In figure 2, the mean sodium (Na+) concentration (mMol/L) was measured at each skin site on the respondents. 
+
+
+2) __I am providing the data set in an Excel spreadsheet with two pages. One has the two responses and the other has patient information. Use the `merge` function to create a single data set that replicates the subject information for each observation on sweat rate and sodium concentration on each subject. The following code allows you to read the individual pages from the spreadsheet__:
+
+```{r warning=F,message=F}
+library(readxl)
+tats1 <- read_excel("tats1.xlsx",  sheet = "tats1")
+subjectinfo <- read_excel("tats1.xlsx",  sheet = "SubjectInfo")
+View(tats1)
+View(subjectinfo)
+
+#using merge (join to tats1 table)
+tat_full <- merge(tats1, subjectinfo, by = c("Subject"), all.x = TRUE)
+
+#alternatively, using Hadley's methods (i.e. dplyr) (THIS IS A LEFT JOIN)
+hadleys_tats <- left_join(tats1, subjectinfo, by = c("Subject"))
+
+#Look, both methods work fine. The one nifty thing about dplyr's method
+#is that it allows for doing something closer to what you'd do in SQL
+
+```
+
+3) Use `qplot` from `ggplot2` to make a plot of the sweat rate responses for each subject with Tat_not on the x-axis and a line for each subject. No discussion.
+```{r warning=F,message=F}
+library(ggplot2)
+
+#
+qplot(as.numeric(as.factor(Tat_not)), SweatRate, geom = "line", main = "Sweat Rate qPlot", data = tat_full, color = factor(Subject))
+
+#the better way to do it (because you can make adjustments to the axes,etc.)
+ggplot(hadleys_tats, aes(as.numeric(as.factor(Tat_not)),SweatRate)) + geom_line(aes(color = factor(Subject)), size = 1.3) + geom_point() +  theme_classic() + scale_x_continuous("Tat Not", breaks = c(1,2), labels = c("No Tat","Tat")) + ggtitle("Sweat Rate ggplot")
+
+
+```
+
+
+
+4) __Fit a mixed model that has a random subject intercept and a `Tat_not` fixed effect for the sweat rate response. Report the model summary and write a sentence that contains the evidence for a tattoo related difference in mean sweat rates. Make sure the sentence contains all pertinent information and can stand alone without any output.__
+
+The model summary and predicted mean sweat rates are given below.
+Based on the model we fit, with test statistic -4.76 on 9 DF and corresponding p-value <0.001, there is strong statistical evidence that the estimated mean sweat rate for respondents' body areas that had been tattooed was 0.167 milograms per square centimeter per minute less than for areas that had not been tattooed, after accounting for variation in the 10 subjects. 
+
+
+```{r warning=F,message=F}
+library(nlme); library(lsmeans)
+
+m.1 <- lme(SweatRate ~ Tat_not, random = ~1|Subject, data = tat_full)
+summary(m.1)
+
+#predicted mean sweat rates for tatooed and non-tattooed areas
+lsmeans(m.1, specs = "Tat_not")
+```
+
+
+
+4) __The following code contains the paired t-test results from my version of their data set for the SweatRate response. Compare the test results to your results from the comparable part of the mixed model.__
+
+```{r warning=F,message=F}
+t.test(SweatRate~Tat_not,data=hadleys_tats,paired=T)
+#Paired t-test (thankfully not done in excel)
+
+summary(m.1)
+```
+
+
+5) __Calculate and interpret the ICC from your mixed model.__
+The inter-class correlation models the correlation of the two measurements within a given subject. Note that we assume measurements on different subjects are independent.
+
+$$ ICC = \frac{\sigma^2_{subject}}{\sigma^2_{error}+\sigma^2_{subject}} = \frac{0.18527}{0.07846 + 0.18527} = 0.703$$
+
+
+
+
+6) __Explore the diagnostics for the model, using plot(MODELNAME) and the qqPlot() from `car` of the residuals from the model. Discuss the results in each plot.__
+
+The assumptions that need to be checked are that the residuals are normally distributed, as are the random effects, and that the variance is relatively constant for all observations in the data. The residual plot shows that a single respondent had a particularly large residual relative to the rest; this also evident in the QQ Plot and density plot of the random effects. Outside of the outlier subject, the random effects appear reasonably normal, and the residuals look pretty good as well. The residual plot also shows some fanning, but this may be more a lack of linearity than a lack of constant variance. 
+
+```{r warning=F,message=F}
+plot(m.1, pch = 20)
+require(car)
+residz <- residuals(m.1, type = "normalized")
+#check normality of the residuals
+qqPlot(residz, pch = 20)
+#check normality of the random effects
+qqPlot(unlist(ranef(m.1)), pch = 20)
+plot(density(unlist(ranef(m.1))), main = "Density of Random Effects")
+
+```
+
+7) __Now suppose we want to control for the `height`, `weight`, and `TattoAge` in the same model. Add these fixed effects to model, make an effects plot, and then write a new sentence summarizing the evidence for the `Tat_not` result in this model.__
+
+Accounting for the variation in the 10 subjects and holding the effects of Weight and Height constant, the test statistic for the Tatoo effect of -4.76 on 9 DF with corresponding p-value of 0.001 provides strong evidence that respondents' tat-covered areas sweat less than their skin areas that are not covered in tattoos. 
+
+
+```{r warning=F,message=F}
+library(effects)
+m.hw <- lme(SweatRate ~ Tat_not + Height_cm + Weight_kg, random = ~1|Subject, data = tat_full)
+summary(m.hw)
+plot(allEffects(m.hw))
+
+#predicted means
+lsmeans(m.hw, specs = c("Tat_not"))
+```
+
+8) __Note the levels for the fixed effects in the model, using the term "contextual" carefully. Use that to explain why the DF differ for some of the fixed effects in the model.__
+
+In the Hierarchical way of discussing mixed models:
+
++ Height and Weight are contextual to the second, Subject-level of the model. They do not vary at the observation level. 
++ Whether or not the site on the respondent's body had a tatoo (TAT_not) is not "contextual" because this variable is measured at the first Observation-level of the model.  
+
+In the vernacular of Pinheiro and Bates (2000), the first level of the model would be the Subject level and the effects of Height and Weight would be "outer" to the Observation-level. 
+
+9) __Write out the theoretical model you were fitting here, making sure the variables used are explicitly named and note any assumptions about random effects. Carefully use the notation to help convey the information from the previous question and make sure to define what any subscripts mean.__
+
+- $SweatRate_{(i)j}=\beta_0 + \beta_1TatNot_{(i)j} + \beta_2Height_j + \beta_3Weight_j + Subject_j + \epsilon_{(i)j}$
+
+- Where $j=1...10$ are for the participants and $i=1,2$ for the measurements on the two sites within each subject. We assume that the random intercept for each of the j subjects, denoted $Subject_j$, is distributed normally with mean 0 and variance $\sigma^2_{subject}$. The random intercept is assumed independent of the random error term $\epsilon_{(i)j} ~ N(0,\sigma^2_{error})$. 
+
